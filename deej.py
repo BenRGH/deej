@@ -7,12 +7,40 @@ import datetime
 import os
 
 import infi.systray
-import serial
 
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 from ctypes import POINTER, cast
 from comtypes import CLSCTX_ALL
 
+import paho.mqtt.client as mqtt
+
+connected = False
+brokerAddr = "192.168.0.26"
+topic = "home/volume"
+receivedMsg = "4095|4095|4095|4095|4095"
+
+def on_message(client, userdata, message):
+    global receivedMsg
+    print message.payload
+    if (message.payload != receivedMsg):
+        receivedMsg = message.payload
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        global connected
+        connected = True 
+ 
+    else:
+        print("Connection failed")
+
+def on_disconnect(client, userdata,rc=0):
+    logging.debug("Disconnected result code "+str(rc))
+    client.loop_stop()
+
+mqttClient = mqtt.Client("pc")
+mqttClient.on_message = on_message #attach functions to callbacks
+mqttClient.on_connect = on_connect
+mqttClient.on_disconnect = on_disconnect
 
 class Deej(object):
 
@@ -38,18 +66,11 @@ class Deej(object):
         self._stopped = True
 
     def accept_commands(self):
-        ser = serial.Serial()
-        ser.baudrate = 9600
-        ser.port = 'COM4'
-        ser.open()
-
-        # ensure we start clean
-        ser.readline()
-
         while not self._stopped:
-
-            # read a single line from the serial stream, has values between 0 and 1023 separated by "|"
-            line = ser.readline()
+            time.sleep(.01)
+            global receivedMsg
+            # read a single line from the serial stream, has values between 0 and 4095 separated by "|"
+            line = receivedMsg
 
             # empty lines are a thing i guess
             if not line:
@@ -67,7 +88,7 @@ class Deej(object):
             parsed_values = [int(n) for n in split_line]
 
             # now they're floats between 0 and 1 (but kinda dirty: 0.12334)
-            normalized_values = [n / 1023.0 for n in parsed_values]
+            normalized_values = [n / 4095.0 for n in parsed_values]
 
             # now they're cleaned up to 2 points of precision
             clean_values = [self._clean_session_volume(n) for n in normalized_values]
@@ -181,10 +202,12 @@ def setup_tray(stop_callback):
     return tray
 
 def main():
+    global mqttClient, brokerAddr, topic, connected
+
     deej = Deej({
         'slider_mapping': {
             0: 'master',
-            1: 'chrome.exe',
+            1: 'firefox.exe',
             2: 'spotify.exe',
             3: [
                 'pathofexile_x64.exe',
@@ -196,6 +219,16 @@ def main():
     })
 
     try:
+        mqttClient.connect(brokerAddr)
+        mqttClient.loop_start()
+
+        while connected != True:    #Wait for connection
+            print("waiting")
+            time.sleep(0.1)
+
+        mqttClient.subscribe(topic)
+        print("subscribed")
+
         deej.initialize()
         tray = setup_tray(deej.stop)
 
