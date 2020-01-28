@@ -14,24 +14,17 @@ from comtypes import CLSCTX_ALL
 
 import paho.mqtt.client as mqtt
 
-connected = False
 brokerAddr = "192.168.0.26"
 topic = "home/volume"
 receivedMsg = "4095|4095|4095|4095|4095"
 
 def on_message(client, userdata, message):
     global receivedMsg
-    print message.payload
-    if (message.payload != receivedMsg):
-        receivedMsg = message.payload
+    receivedMsg = message.payload
+
 
 def on_connect(client, userdata, flags, rc):
-    if rc == 0:
-        global connected
-        connected = True 
- 
-    else:
-        print("Connection failed")
+    client.subscribe(topic)
 
 def on_disconnect(client, userdata,rc=0):
     logging.debug("Disconnected result code "+str(rc))
@@ -66,11 +59,13 @@ class Deej(object):
         self._stopped = True
 
     def accept_commands(self):
+        mqttClient.loop_start()
         while not self._stopped:
-            time.sleep(.01)
             global receivedMsg
+
             # read a single line from the serial stream, has values between 0 and 4095 separated by "|"
             line = receivedMsg
+            #print("read")
 
             # empty lines are a thing i guess
             if not line:
@@ -202,8 +197,6 @@ def setup_tray(stop_callback):
     return tray
 
 def main():
-    global mqttClient, brokerAddr, topic, connected
-
     deej = Deej({
         'slider_mapping': {
             0: 'master',
@@ -219,18 +212,10 @@ def main():
     })
 
     try:
-        mqttClient.connect(brokerAddr)
-        mqttClient.loop_start()
-
-        while connected != True:    #Wait for connection
-            print("waiting")
-            time.sleep(0.1)
-
-        mqttClient.subscribe(topic)
-        print("subscribed")
-
         deej.initialize()
         tray = setup_tray(deej.stop)
+
+        mqttClient.connect(brokerAddr)
 
         deej.accept_commands()
 

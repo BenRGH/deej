@@ -1,21 +1,54 @@
+/*
+ * Adapted from  omriharel's code to support esp32 and mqtt
+ * Credit to him for the project idea 
+ * See EspMQTT library for details on how to use it as a client like below
+ */
+
+#include "EspMQTTClient.h"
+
 const int NUM_SLIDERS = 5;
-const int analogInputs[NUM_SLIDERS] = {A0, A1, A2, A3, A4};
+const int analogInputs[NUM_SLIDERS] = {39, 34, 35, 32, 33}; // GPIO pins, only use ADC1
+const int wifiLED = 21;
 
 int analogSliderValues[NUM_SLIDERS];
+
+const String topic = "home/volume";
+
+EspMQTTClient client(
+  "", // WIFI SSID
+  "", // WIFI PASSWORD
+  "192.168.0.26",  // MQTT Broker server ip
+  "",
+  "",
+  "esp32", // Client name
+  1883
+);
 
 void setup() { 
   for (int i = 0; i < NUM_SLIDERS; i++) {
     pinMode(analogInputs[i], INPUT);
   }
+  pinMode(wifiLED, OUTPUT);
+  
+  Serial.begin(115200);
+}
 
-  Serial.begin(9600);
+void onConnectionEstablished()
+{
+//  client.subscribe("home/volume", [](const String & payload) {
+//    Serial.println(payload); // debugging
+//  });
+
+  // client.publish(topic, "Connected");
+  digitalWrite(wifiLED, HIGH);
 }
 
 void loop() {
+  client.loop(); // needed for EspMQTTClient
   updateSliderValues();
   sendSliderValues(); // Actually send data (all the time)
-  // printSliderValues(); // For debug
-  delay(10);
+  //printSliderValues(); // For debug
+  delay(20);
 }
 
 void updateSliderValues() {
@@ -35,7 +68,8 @@ void sendSliderValues() {
     }
   }
   
-  Serial.println(builtString);
+  // Serial.println(builtString);
+  client.publish(topic, builtString);
 }
 
 void printSliderValues() {
